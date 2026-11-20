@@ -1,0 +1,159 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  CUSTOMER
+  PROVIDER
+  ADMIN
+}
+
+enum RequestStatus {
+  OPEN
+  ACCEPTED
+  FUNDED
+  RELEASED
+  REJECTED
+  CANCELLED
+}
+
+enum EscrowStatus {
+  HELD
+  RELEASED
+  REFUNDED
+}
+
+model User {
+  id             Int       @id @default(autoincrement())
+  name           String
+  email          String    @unique
+  password       String
+  role           Role      @default(CUSTOMER)
+  phone          String?
+  location       String?
+  city           String?
+  country        String?
+  countryCode    String?
+  latitude       Float?
+  longitude      Float?
+  businessName   String?
+  categories     String[]  @default([])
+  offeredServices String[] @default([])
+  hourlyRate     Float?
+  currency       String?
+  bio            String?
+  profilePhoto   String?
+  isVerified     Boolean   @default(false)
+  isSuspended    Boolean   @default(false)
+  rejectionReason String?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+  services       Service[]
+  wallets        Wallet[]
+  customerRequests ServiceRequest[] @relation("CustomerRequests")
+  providerRequests ServiceRequest[] @relation("ProviderRequests")
+  reviewsWritten   Review[] @relation("ReviewCustomer")
+  reviewsReceived  Review[] @relation("ReviewProvider")
+  passwordResets   PasswordReset[]
+}
+
+model PasswordReset {
+  id        Int       @id @default(autoincrement())
+  userId    Int
+  tokenHash String    @unique
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model Review {
+  id         Int      @id @default(autoincrement())
+  rating     Int
+  body       String
+  hidden     Boolean  @default(false)
+  customerId Int
+  providerId Int
+  createdAt  DateTime @default(now())
+  customer   User     @relation("ReviewCustomer", fields: [customerId], references: [id], onDelete: Cascade)
+  provider   User     @relation("ReviewProvider", fields: [providerId], references: [id], onDelete: Cascade)
+
+  @@index([providerId])
+  @@index([rating])
+}
+
+model LlmQuery {
+  id        Int      @id @default(autoincrement())
+  createdAt DateTime @default(now())
+}
+
+model Service {
+  id          Int      @id @default(autoincrement())
+  title       String
+  description String
+  category    String
+  price       Int
+  currency    String   @default("USD")
+  location    String
+  latitude    Float?
+  longitude   Float?
+  isActive    Boolean  @default(true)
+  providerId  Int
+  provider    User             @relation(fields: [providerId], references: [id], onDelete: Cascade)
+  requests    ServiceRequest[]
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
+
+  @@index([providerId])
+  @@index([category])
+  @@index([isActive])
+}
+
+model Wallet {
+  id       Int    @id @default(autoincrement())
+  userId   Int
+  currency String
+  balance  Int    @default(0)
+  user     User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, currency])
+}
+
+model ServiceRequest {
+  id          Int           @id @default(autoincrement())
+  customerId  Int
+  providerId  Int
+  serviceId   Int
+  note        String
+  amount      Int
+  currency    String
+  status      RequestStatus @default(OPEN)
+  customer    User          @relation("CustomerRequests", fields: [customerId], references: [id])
+  provider    User          @relation("ProviderRequests", fields: [providerId], references: [id])
+  service     Service       @relation(fields: [serviceId], references: [id])
+  escrow      Escrow?
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+  fundedAt    DateTime?
+  releasedAt  DateTime?
+
+  @@index([customerId])
+  @@index([providerId])
+  @@index([status])
+}
+
+model Escrow {
+  id         Int            @id @default(autoincrement())
+  requestId  Int            @unique
+  amount     Int
+  currency   String
+  status     EscrowStatus   @default(HELD)
+  request    ServiceRequest @relation(fields: [requestId], references: [id], onDelete: Cascade)
+  createdAt  DateTime       @default(now())
+  releasedAt DateTime?
+}
